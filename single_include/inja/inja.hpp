@@ -2818,7 +2818,7 @@ public:
     return render(parse(input), data, context);
   }
 
-  std::string render(const Template& tmpl, const json& data, void* context = nullptr) {
+  std::string render(const Template& tmpl, const json& data, void* context = nullptr) const {
     std::stringstream os;
     render_to(os, tmpl, data, context);
     return os.str();
@@ -2855,7 +2855,7 @@ public:
     write(temp, data, filename_out);
   }
 
-  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data, void* context = nullptr) {
+  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data, void* context = nullptr) const {
     Renderer(render_config, template_storage, function_storage, context).render_to(os, tmpl, data);
     return os;
   }
