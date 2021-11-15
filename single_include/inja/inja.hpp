@@ -98,6 +98,8 @@ namespace inja {
 using Arguments = std::vector<const json*>;
 using CallbackFunction = std::function<json(Arguments& args)>;
 using VoidCallbackFunction = std::function<void(Arguments& args)>;
+using CallbackWithContextFunction = std::function<json(Arguments& args, void* context)>;
+using VoidCallbackWithContextFunction = std::function<void(Arguments& args, void* context)>;
 
 /*!
  * \brief Class for builtin functions and user-defined callbacks.
@@ -157,9 +159,9 @@ public:
   };
 
   struct FunctionData {
-    explicit FunctionData(const Operation& op, const CallbackFunction& cb = CallbackFunction {}): operation(op), callback(cb) {}
+    explicit FunctionData(const Operation& op, const CallbackWithContextFunction& cb = CallbackWithContextFunction {}): operation(op), callback(cb) {}
     const Operation operation;
-    const CallbackFunction callback;
+    const CallbackWithContextFunction callback;
   };
 
 private:
@@ -202,7 +204,7 @@ public:
     function_storage.emplace(std::make_pair(static_cast<std::string>(name), num_args), FunctionData {op});
   }
 
-  void add_callback(std::string_view name, int num_args, const CallbackFunction& callback) {
+  void add_callback(std::string_view name, int num_args, const CallbackWithContextFunction& callback) {
     function_storage.emplace(std::make_pair(static_cast<std::string>(name), num_args), FunctionData {Operation::Callback, callback});
   }
 
@@ -485,7 +487,7 @@ public:
   std::string name;
   int number_args; // Should also be negative -> -1 for unknown number
   std::vector<std::shared_ptr<ExpressionNode>> arguments;
-  CallbackFunction callback;
+  CallbackWithContextFunction callback;
 
   explicit FunctionNode(std::string_view name, size_t pos)
       : ExpressionNode(pos), precedence(8), associativity(Associativity::Left), operation(Op::Callback), name(name), number_args(1) {}
@@ -2120,6 +2122,8 @@ class Renderer : public NodeVisitor {
   std::stack<const json*> data_eval_stack;
   std::stack<const DataNode*> not_found_stack;
 
+  void* render_context {nullptr};
+
   bool break_rendering {false};
 
   static bool truthy(const json* data) {
@@ -2271,7 +2275,7 @@ class Renderer : public NodeVisitor {
       const auto function_data = function_storage.find_function(node.name, 0);
       if (function_data.operation == FunctionStorage::Operation::Callback) {
         Arguments empty_args {};
-        const auto value = std::make_shared<json>(function_data.callback(empty_args));
+        const auto value = std::make_shared<json>(function_data.callback(empty_args, render_context));
         data_tmp_stack.push_back(value);
         data_eval_stack.push(value.get());
       } else {
@@ -2497,7 +2501,7 @@ class Renderer : public NodeVisitor {
     } break;
     case Op::Callback: {
       auto args = get_argument_vector(node);
-      make_result(node.callback(args));
+      make_result(node.callback(args, render_context));
     } break;
     case Op::Super: {
       const auto args = get_argument_vector(node);
@@ -2647,7 +2651,7 @@ class Renderer : public NodeVisitor {
   }
 
   void visit(const IncludeStatementNode& node) {
-    auto sub_renderer = Renderer(config, template_storage, function_storage);
+    auto sub_renderer = Renderer(config, template_storage, function_storage, render_context);
     const auto included_template_it = template_storage.find(node.file);
     if (included_template_it != template_storage.end()) {
       sub_renderer.render_to(*output_stream, included_template_it->second, *data_input, &additional_data);
@@ -2689,8 +2693,8 @@ class Renderer : public NodeVisitor {
   }
 
 public:
-  Renderer(const RenderConfig& config, const TemplateStorage& template_storage, const FunctionStorage& function_storage)
-      : config(config), template_storage(template_storage), function_storage(function_storage) {}
+  Renderer(const RenderConfig& config, const TemplateStorage& template_storage, const FunctionStorage& function_storage, void* render_context = nullptr)
+      : config(config), template_storage(template_storage), function_storage(function_storage), render_context(render_context) {}
 
   void render_to(std::ostream& os, const Template& tmpl, const json& data, json* loop_data = nullptr) {
     output_stream = &os;
@@ -2810,13 +2814,13 @@ public:
     return parse_template(filename);
   }
 
-  std::string render(std::string_view input, const json& data) {
-    return render(parse(input), data);
+  std::string render(std::string_view input, const json& data, void* context = nullptr) {
+    return render(parse(input), data, context);
   }
 
-  std::string render(const Template& tmpl, const json& data) {
+  std::string render(const Template& tmpl, const json& data, void* context = nullptr) {
     std::stringstream os;
-    render_to(os, tmpl, data);
+    render_to(os, tmpl, data, context);
     return os.str();
   }
 
@@ -2851,8 +2855,8 @@ public:
     write(temp, data, filename_out);
   }
 
-  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data) {
-    Renderer(render_config, template_storage, function_storage).render_to(os, tmpl, data);
+  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data, void* context = nullptr) {
+    Renderer(render_config, template_storage, function_storage, context).render_to(os, tmpl, data);
     return os;
   }
 
@@ -2890,15 +2894,46 @@ public:
   @brief Adds a callback with given number or arguments
   */
   void add_callback(const std::string& name, int num_args, const CallbackFunction& callback) {
-    function_storage.add_callback(name, num_args, callback);
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) { return callback(args); });
   }
 
   /*!
   @brief Adds a void callback with given number or arguments
   */
   void add_void_callback(const std::string& name, int num_args, const VoidCallbackFunction& callback) {
-    function_storage.add_callback(name, num_args, [callback](Arguments& args) {
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) {
       callback(args);
+      return json();
+    });
+  }
+
+  /*!
+  @brief Adds a variadic callback with the render context pointer
+  */
+  void add_callback_with_context(const std::string& name, const CallbackWithContextFunction& callback) {
+    add_callback_with_context(name, -1, callback);
+  }
+
+  /*!
+  @brief Adds a variadic void callback with the render context pointer
+  */
+  void add_void_callback_with_context(const std::string& name, const VoidCallbackWithContextFunction& callback) {
+    add_void_callback_with_context(name, -1, callback);
+  }
+
+  /*!
+  @brief Adds a callback with given number or arguments and the render context pointer
+  */
+  void add_callback_with_context(const std::string& name, int num_args, const CallbackWithContextFunction& callback) {
+    function_storage.add_callback(name, num_args, callback);
+  }
+
+  /*!
+  @brief Adds a void callback with given number or arguments and the render context pointer
+  */
+  void add_void_callback_with_context(const std::string& name, int num_args, const VoidCallbackWithContextFunction& callback) {
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) {
+      callback(args, context);
       return json();
     });
   }

@@ -40,6 +40,8 @@ class Renderer : public NodeVisitor {
   std::stack<const json*> data_eval_stack;
   std::stack<const DataNode*> not_found_stack;
 
+  void* render_context {nullptr};
+
   bool break_rendering {false};
 
   static bool truthy(const json* data) {
@@ -191,7 +193,7 @@ class Renderer : public NodeVisitor {
       const auto function_data = function_storage.find_function(node.name, 0);
       if (function_data.operation == FunctionStorage::Operation::Callback) {
         Arguments empty_args {};
-        const auto value = std::make_shared<json>(function_data.callback(empty_args));
+        const auto value = std::make_shared<json>(function_data.callback(empty_args, render_context));
         data_tmp_stack.push_back(value);
         data_eval_stack.push(value.get());
       } else {
@@ -417,7 +419,7 @@ class Renderer : public NodeVisitor {
     } break;
     case Op::Callback: {
       auto args = get_argument_vector(node);
-      make_result(node.callback(args));
+      make_result(node.callback(args, render_context));
     } break;
     case Op::Super: {
       const auto args = get_argument_vector(node);
@@ -567,7 +569,7 @@ class Renderer : public NodeVisitor {
   }
 
   void visit(const IncludeStatementNode& node) {
-    auto sub_renderer = Renderer(config, template_storage, function_storage);
+    auto sub_renderer = Renderer(config, template_storage, function_storage, render_context);
     const auto included_template_it = template_storage.find(node.file);
     if (included_template_it != template_storage.end()) {
       sub_renderer.render_to(*output_stream, included_template_it->second, *data_input, &additional_data);
@@ -609,8 +611,8 @@ class Renderer : public NodeVisitor {
   }
 
 public:
-  Renderer(const RenderConfig& config, const TemplateStorage& template_storage, const FunctionStorage& function_storage)
-      : config(config), template_storage(template_storage), function_storage(function_storage) {}
+  Renderer(const RenderConfig& config, const TemplateStorage& template_storage, const FunctionStorage& function_storage, void* render_context = nullptr)
+      : config(config), template_storage(template_storage), function_storage(function_storage), render_context(render_context) {}
 
   void render_to(std::ostream& os, const Template& tmpl, const json& data, json* loop_data = nullptr) {
     output_stream = &os;

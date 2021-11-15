@@ -35,6 +35,9 @@ dist
 # Coveralls repo token
 .coveralls.yml
 
+# VS CMake local configuration
+CMakeSettings.json
+
 .vscode
 .vs
 

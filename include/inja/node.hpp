@@ -145,7 +145,7 @@ public:
   std::string name;
   int number_args; // Should also be negative -> -1 for unknown number
   std::vector<std::shared_ptr<ExpressionNode>> arguments;
-  CallbackFunction callback;
+  CallbackWithContextFunction callback;
 
   explicit FunctionNode(std::string_view name, size_t pos)
       : ExpressionNode(pos), precedence(8), associativity(Associativity::Left), operation(Op::Callback), name(name), number_args(1) {}

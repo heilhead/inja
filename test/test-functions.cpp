@@ -266,6 +266,15 @@ TEST_CASE("callbacks") {
     CHECK(env.render("{{ argmax(4, 2, 6) }}", data) == "2");
     CHECK(env.render("{{ argmax(0, 2, 6, 8, 3) }}", data) == "3");
   }
+
+  SUBCASE("WithContext") {
+    int context = 42;
+    env.add_callback_with_context("context", 0, [](inja::Arguments& args, void* context) { return ++*reinterpret_cast<int*>(context); });
+
+    CHECK(env.render("{{ context() }}", data, &context) == "43");
+    CHECK(env.render("{{ context() }}", data, &context) == "44");
+    CHECK(env.render("{{ context() }}", data, &context) == "45");
+  }
 }
 
 TEST_CASE("combinations") {

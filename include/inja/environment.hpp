@@ -108,13 +108,13 @@ public:
     return parse_template(filename);
   }
 
-  std::string render(std::string_view input, const json& data) {
-    return render(parse(input), data);
+  std::string render(std::string_view input, const json& data, void* context = nullptr) {
+    return render(parse(input), data, context);
   }
 
-  std::string render(const Template& tmpl, const json& data) {
+  std::string render(const Template& tmpl, const json& data, void* context = nullptr) {
     std::stringstream os;
-    render_to(os, tmpl, data);
+    render_to(os, tmpl, data, context);
     return os.str();
   }
 
@@ -149,8 +149,8 @@ public:
     write(temp, data, filename_out);
   }
 
-  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data) {
-    Renderer(render_config, template_storage, function_storage).render_to(os, tmpl, data);
+  std::ostream& render_to(std::ostream& os, const Template& tmpl, const json& data, void* context = nullptr) {
+    Renderer(render_config, template_storage, function_storage, context).render_to(os, tmpl, data);
     return os;
   }
 
@@ -188,15 +188,46 @@ public:
   @brief Adds a callback with given number or arguments
   */
   void add_callback(const std::string& name, int num_args, const CallbackFunction& callback) {
-    function_storage.add_callback(name, num_args, callback);
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) { return callback(args); });
   }
 
   /*!
   @brief Adds a void callback with given number or arguments
   */
   void add_void_callback(const std::string& name, int num_args, const VoidCallbackFunction& callback) {
-    function_storage.add_callback(name, num_args, [callback](Arguments& args) {
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) {
       callback(args);
+      return json();
+    });
+  }
+
+  /*!
+  @brief Adds a variadic callback with the render context pointer
+  */
+  void add_callback_with_context(const std::string& name, const CallbackWithContextFunction& callback) {
+    add_callback_with_context(name, -1, callback);
+  }
+
+  /*!
+  @brief Adds a variadic void callback with the render context pointer
+  */
+  void add_void_callback_with_context(const std::string& name, const VoidCallbackWithContextFunction& callback) {
+    add_void_callback_with_context(name, -1, callback);
+  }
+
+  /*!
+  @brief Adds a callback with given number or arguments and the render context pointer
+  */
+  void add_callback_with_context(const std::string& name, int num_args, const CallbackWithContextFunction& callback) {
+    function_storage.add_callback(name, num_args, callback);
+  }
+
+  /*!
+  @brief Adds a void callback with given number or arguments and the render context pointer
+  */
+  void add_void_callback_with_context(const std::string& name, int num_args, const VoidCallbackWithContextFunction& callback) {
+    function_storage.add_callback(name, num_args, [callback](Arguments& args, void* context) {
+      callback(args, context);
       return json();
     });
   }
