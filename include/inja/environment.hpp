@@ -240,6 +240,18 @@ public:
     template_storage[name] = tmpl;
   }
 
+  /**
+   * Returns a template with the given name, if it was previously added to the environment using `include_template()`.
+   */
+  const Template* find_template(const std::string& name) {
+    const auto search = template_storage.find(name);
+    if (search != template_storage.end()) {
+      return &search->second;
+    } else {
+      return nullptr;
+    }
+  }
+
   /*!
   @brief Sets a function that is called when an included file is not found
   */

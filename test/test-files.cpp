@@ -88,5 +88,7 @@ TEST_CASE("include-in-memory-and-file-template") {
   const auto parsed_body_template = env.parse("Bye {{ name }}.");
   env.include_template("body", parsed_body_template);
 
+  CHECK(env.find_template("body") != nullptr);
+  CHECK(env.find_template("unknown_template") == nullptr);
   CHECK(env.render_file("include-both.txt", data) == "Hello Jeff. - Bye Jeff.");
 }
